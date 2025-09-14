@@ -169,7 +169,7 @@ def top_fvg_zones(overlays, kind: str, px: float, limit: int = 3):
 
 
 def draw_right_legend(ax):
-    # Draw a compact legend block at top-right with color keys; background auto-fits contents
+    # Draw a compact legend block at top-right with color keys; panel fits content
     fig = ax.figure
     trans = fig.transFigure
     x0, y0 = 0.965, 0.965  # top-right anchor in figure coords
@@ -182,48 +182,37 @@ def draw_right_legend(ax):
         ("CHoCH", "#14b8a6", "C", "label"),
         ("BOS", "#f59e0b", "B", "label"),
     ]
-    # Draw items first to measure their extents
-    artists = []
-    x_text = x0 - 0.008
-    x_sample = x_text - 0.06
+    # Layout constants
+    char_w = 0.006  # approx width per character in figure fraction
+    text_gap = 0.010  # gap between swatch and text
+    swatch_w = 0.030
+    swatch_h = 0.016
+    max_label = max(len(lbl) for (lbl, *_ ) in items)
+    panel_w = swatch_w + text_gap + char_w * max_label + 0.020  # small outer padding
+    panel_h = dy * (len(items) + 0.6)
+    # Panel positioned to exactly fit around items
+    panel_x0 = x0 - panel_w
+    panel_y0 = y0 - panel_h
+    panel = patches.FancyBboxPatch((panel_x0, panel_y0), panel_w, panel_h,
+                                   boxstyle="round,pad=0.35", transform=trans,
+                                   facecolor=(0,0,0,0.70), edgecolor=(1,1,1,0.18), linewidth=0.6, zorder=5)
+    ax.add_artist(panel)
+    # Draw items with a small gap between swatch and text
+    x_sample = panel_x0 + 0.012
+    x_text = x_sample + swatch_w + text_gap
     for i, (label, color, txt, kind) in enumerate(items):
         y = y0 - i * dy
-        artists.append(ax.text(x_text, y, label, transform=trans, fontsize=9, color="#e5e7eb", ha="right", va="top", zorder=10))
+        ax.text(x_text, y, label, transform=trans, fontsize=9, color="#e5e7eb", ha="right", va="top", zorder=10)
         if kind == "box":
-            rect = patches.Rectangle((x_sample, y - 0.022), 0.028, 0.014, transform=trans, fc=color, ec=color, lw=1, zorder=10)
-            ax.add_artist(rect); artists.append(rect)
+            rect = patches.Rectangle((x_sample, y - swatch_h*0.9), swatch_w, swatch_h, transform=trans, fc=color, ec=color, lw=1, zorder=10)
+            ax.add_artist(rect)
         elif kind == "line":
-            ln = Line2D([x_sample, x_sample + 0.028], [y - 0.017, y - 0.017], transform=trans, color=color, lw=2, zorder=10)
-            ax.add_line(ln); artists.append(ln)
+            ax.add_line(Line2D([x_sample, x_sample + swatch_w], [y - 0.017, y - 0.017], transform=trans, color=color, lw=2, zorder=10))
         elif kind == "label":
-            artists.append(ax.text(x_sample + 0.014, y - 0.017, txt or "", transform=trans, fontsize=8.5, color="#0f172a",
-                                   ha="center", va="center", bbox=dict(boxstyle="round,pad=0.18", fc=color, ec=(1,1,1,0.25), lw=0.5), zorder=10))
+            ax.text(x_sample + swatch_w/2, y - 0.017, txt or "", transform=trans, fontsize=8.5, color="#0f172a",
+                    ha="center", va="center", bbox=dict(boxstyle="round,pad=0.18", fc=color, ec=(1,1,1,0.25), lw=0.5), zorder=10)
         elif kind == "tri":
-            sc = ax.scatter([x_sample + 0.014], [y - 0.017], transform=trans, marker="v", color=color, s=22, zorder=10)
-            artists.append(sc)
-    # Force a draw to get a renderer and compute extents
-    try:
-        fig.canvas.draw()
-        renderer = fig.canvas.get_renderer()
-        from matplotlib.transforms import Bbox
-        bbs = []
-        for ar in artists:
-            try:
-                bb_disp = ar.get_window_extent(renderer=renderer)
-                bb_fig = fig.transFigure.inverted().transform_bbox(bb_disp)
-                bbs.append(bb_fig)
-            except Exception:
-                pass
-        if bbs:
-            minx = min(bb.x0 for bb in bbs); miny = min(bb.y0 for bb in bbs)
-            maxx = max(bb.x1 for bb in bbs); maxy = max(bb.y1 for bb in bbs)
-            pad_x = 0.006; pad_y = 0.008
-            panel = patches.FancyBboxPatch((minx - pad_x, miny - pad_y), (maxx - minx) + 2*pad_x, (maxy - miny) + 2*pad_y,
-                                           boxstyle="round,pad=0.35", transform=trans,
-                                           facecolor=(0,0,0,0.70), edgecolor=(1,1,1,0.18), linewidth=0.6, zorder=5)
-            ax.add_artist(panel)
-    except Exception:
-        pass
+            ax.scatter([x_sample + swatch_w/2], [y - 0.017], transform=trans, marker="v", color=color, s=22, zorder=10)
 
 
 def compute_markers(df):
