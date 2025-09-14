@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Response
+import os
+from fastapi import FastAPI, Response, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 import io
 import pandas as pd
 import numpy as np
 import mplfinance as mpf
+import matplotlib.pyplot as plt
 
 app = FastAPI()
 
@@ -22,6 +24,26 @@ class Payload(BaseModel):
     data: list[Candle]
     overlays: dict | None = None
 
+def verify_api_key(x_api_key: str | None = Header(default=None)):
+    required = os.getenv("API_KEY")
+    if required and x_api_key != required:
+        raise HTTPException(status_code=401, detail="invalid api key")
+
+@app.middleware("http")
+async def limit_payload_size(request: Request, call_next):
+    # Basic protection using Content-Length header; platforms usually set this.
+    max_bytes = int(os.getenv("MAX_BODY_BYTES", "1048576"))  # 1 MiB default
+    cl = request.headers.get("content-length")
+    try:
+        if cl is not None and int(cl) > max_bytes:
+            return Response(status_code=413, content="payload too large")
+    except ValueError:
+        pass
+    return await call_next(request)
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
 
 def draw_overlays(ax, overlays):
     if not overlays:
@@ -75,10 +97,13 @@ def draw_overlays(ax, overlays):
         hline(short_sig.get("tp2"), "#ea580c", "TP2")
 
 
-@app.post("/render")
+@app.post("/render", dependencies=[Depends(verify_api_key)])
 def render(payload: Payload):
     if not payload.data:
         return Response(status_code=400, content="no data")
+    max_candles = int(os.getenv("MAX_CANDLES", "1000"))
+    if len(payload.data) > max_candles:
+        return Response(status_code=413, content="too many candles")
     # Build dataframe for mplfinance
     df = pd.DataFrame(
         {
@@ -112,8 +137,10 @@ def render(payload: Payload):
         pass
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=160)
-    buf.seek(0)
-    png = buf.getvalue()
-    return Response(content=png, media_type="image/png")
-
+    try:
+        fig.savefig(buf, format="png", dpi=160)
+        buf.seek(0)
+        png = buf.getvalue()
+        return Response(content=png, media_type="image/png")
+    finally:
+        plt.close(fig)
