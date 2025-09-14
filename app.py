@@ -169,10 +169,10 @@ def top_fvg_zones(overlays, kind: str, px: float, limit: int = 3):
 
 
 def draw_right_legend(ax):
-    # Draw a compact legend block at top-right with color keys, with background panel
+    # Draw a compact legend block at top-right with color keys; background auto-fits contents
     fig = ax.figure
     trans = fig.transFigure
-    x0, y0 = 0.965, 0.965
+    x0, y0 = 0.965, 0.965  # top-right anchor in figure coords
     dy = 0.04
     items = [
         ("Buy FVG", (0.09, 0.78, 0.69, 0.8), None, "box"),
@@ -182,29 +182,48 @@ def draw_right_legend(ax):
         ("CHoCH", "#14b8a6", "C", "label"),
         ("BOS", "#f59e0b", "B", "label"),
     ]
-    # Background panel
-    panel_w = 0.16
-    panel_h = dy * (len(items) + 1.4)
-    panel = patches.FancyBboxPatch((x0 - panel_w, y0 - panel_h), panel_w, panel_h,
-                                   boxstyle="round,pad=0.5", transform=trans,
-                                   facecolor=(0, 0, 0, 0.65), edgecolor=(1, 1, 1, 0.18), linewidth=0.6)
-    ax.add_artist(panel)
-    x_sample = x0 - panel_w + 0.02
-    x_text = x0 - 0.01
+    # Draw items first to measure their extents
+    artists = []
+    x_text = x0 - 0.008
+    x_sample = x_text - 0.06
     for i, (label, color, txt, kind) in enumerate(items):
         y = y0 - i * dy
-        ax.text(x_text, y, label, transform=trans, fontsize=9, color="#e5e7eb", ha="right", va="top")
-        # sample patch
+        artists.append(ax.text(x_text, y, label, transform=trans, fontsize=9, color="#e5e7eb", ha="right", va="top", zorder=10))
         if kind == "box":
-            rect = patches.Rectangle((x_sample, y - 0.028), 0.03, 0.018, transform=trans, fc=color, ec=color, lw=1)
-            ax.add_artist(rect)
+            rect = patches.Rectangle((x_sample, y - 0.022), 0.028, 0.014, transform=trans, fc=color, ec=color, lw=1, zorder=10)
+            ax.add_artist(rect); artists.append(rect)
         elif kind == "line":
-            ax.add_line(Line2D([x_sample, x_sample + 0.03], [y - 0.020, y - 0.020], transform=trans, color=color, lw=2))
+            ln = Line2D([x_sample, x_sample + 0.028], [y - 0.017, y - 0.017], transform=trans, color=color, lw=2, zorder=10)
+            ax.add_line(ln); artists.append(ln)
         elif kind == "label":
-            ax.text(x_sample + 0.015, y - 0.02, txt or "", transform=trans, fontsize=8.5, color="#0f172a",
-                    ha="center", va="center", bbox=dict(boxstyle="round,pad=0.2", fc=color, ec=(1,1,1,0.25), lw=0.5))
+            artists.append(ax.text(x_sample + 0.014, y - 0.017, txt or "", transform=trans, fontsize=8.5, color="#0f172a",
+                                   ha="center", va="center", bbox=dict(boxstyle="round,pad=0.18", fc=color, ec=(1,1,1,0.25), lw=0.5), zorder=10))
         elif kind == "tri":
-            ax.scatter([x_sample + 0.015], [y - 0.02], transform=trans, marker="v", color=color, s=24)
+            sc = ax.scatter([x_sample + 0.014], [y - 0.017], transform=trans, marker="v", color=color, s=22, zorder=10)
+            artists.append(sc)
+    # Force a draw to get a renderer and compute extents
+    try:
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        from matplotlib.transforms import Bbox
+        bbs = []
+        for ar in artists:
+            try:
+                bb_disp = ar.get_window_extent(renderer=renderer)
+                bb_fig = fig.transFigure.inverted().transform_bbox(bb_disp)
+                bbs.append(bb_fig)
+            except Exception:
+                pass
+        if bbs:
+            minx = min(bb.x0 for bb in bbs); miny = min(bb.y0 for bb in bbs)
+            maxx = max(bb.x1 for bb in bbs); maxy = max(bb.y1 for bb in bbs)
+            pad_x = 0.006; pad_y = 0.008
+            panel = patches.FancyBboxPatch((minx - pad_x, miny - pad_y), (maxx - minx) + 2*pad_x, (maxy - miny) + 2*pad_y,
+                                           boxstyle="round,pad=0.35", transform=trans,
+                                           facecolor=(0,0,0,0.70), edgecolor=(1,1,1,0.18), linewidth=0.6, zorder=5)
+            ax.add_artist(panel)
+    except Exception:
+        pass
 
 
 def compute_markers(df):
