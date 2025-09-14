@@ -195,9 +195,14 @@ def render(payload: Payload):
         tight_layout=True,
         update_width_config=dict(candle_linewidth=0.6, candle_width=0.6),
     )
+    # mpf.plot may return a single Axes or a list/tuple of Axes. Use the price Axes.
+    try:
+        ax_main = ax[0] if isinstance(ax, (list, tuple, np.ndarray)) else ax
+    except Exception:
+        ax_main = ax
     try:
         fig.patch.set_facecolor("white")
-        ax.set_facecolor("white")
+        ax_main.set_facecolor("white")
     except Exception:
         pass
     # Draw FVG zones: top 3 each side
@@ -207,17 +212,17 @@ def render(payload: Payload):
         sells = top_fvg_zones(payload.overlays or {}, "bearish", px, limit=3)
         import matplotlib.patches as patches
         for idx, z in enumerate(buys, start=1):
-            ax.axhspan(z["low"], z["high"], xmin=0.0, xmax=1.0, facecolor=(0.09, 0.78, 0.69, 0.12), edgecolor=(0.09, 0.78, 0.69, 0.35), linestyle=":", linewidth=0.8, zorder=0.3)
-            ax.text(0.99, (z["low"] + z["high"]) / 2, f" {idx} ", color="#083344", fontsize=8, va="center", ha="right", bbox=dict(boxstyle="round", fc="#99f6e4", ec="#0e7490", lw=0.6, alpha=0.9))
+            ax_main.axhspan(z["low"], z["high"], xmin=0.0, xmax=1.0, facecolor=(0.09, 0.78, 0.69, 0.12), edgecolor=(0.09, 0.78, 0.69, 0.35), linestyle=":", linewidth=0.8, zorder=0.3)
+            ax_main.text(0.99, (z["low"] + z["high"]) / 2, f" {idx} ", color="#083344", fontsize=8, va="center", ha="right", transform=ax_main.get_yaxis_transform(), bbox=dict(boxstyle="round", fc="#99f6e4", ec="#0e7490", lw=0.6, alpha=0.9))
         for idx, z in enumerate(sells, start=1):
-            ax.axhspan(z["low"], z["high"], xmin=0.0, xmax=1.0, facecolor=(0.94, 0.27, 0.27, 0.10), edgecolor=(0.94, 0.27, 0.27, 0.35), linestyle=":", linewidth=0.8, zorder=0.3)
-            ax.text(0.99, (z["low"] + z["high"]) / 2, f" {idx} ", color="#450a0a", fontsize=8, va="center", ha="right", bbox=dict(boxstyle="round", fc="#fecaca", ec="#b91c1c", lw=0.6, alpha=0.9))
+            ax_main.axhspan(z["low"], z["high"], xmin=0.0, xmax=1.0, facecolor=(0.94, 0.27, 0.27, 0.10), edgecolor=(0.94, 0.27, 0.27, 0.35), linestyle=":", linewidth=0.8, zorder=0.3)
+            ax_main.text(0.99, (z["low"] + z["high"]) / 2, f" {idx} ", color="#450a0a", fontsize=8, va="center", ha="right", transform=ax_main.get_yaxis_transform(), bbox=dict(boxstyle="round", fc="#fecaca", ec="#b91c1c", lw=0.6, alpha=0.9))
     except Exception:
         pass
 
     # Signals and lines
     try:
-        draw_overlays(ax, payload.overlays)
+        draw_overlays(ax_main, payload.overlays)
     except Exception:
         pass
 
@@ -234,12 +239,12 @@ def render(payload: Payload):
         f"{chg:+.4f} ({pct:+.2f}%)",
         f"Time: {wib.strftime('%H:%M')} WIB",
     ]
-    draw_legend(ax, info_lines, loc="upper left")
+    draw_legend(ax_main, info_lines, loc="upper left")
 
     # Footer stats
     ov = payload.overlays or {}
     footer = f"CHoCH: {ov.get('choch_count', 0)} | BOS: {ov.get('bos_bull',0)+ov.get('bos_bear',0)} | {ov.get('trend','')}"
-    draw_watermark(ax, footer)
+    draw_watermark(ax_main, footer)
 
     buf = io.BytesIO()
     try:
