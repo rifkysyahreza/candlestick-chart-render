@@ -172,8 +172,8 @@ def draw_right_legend(ax):
     # Draw a compact legend block at top-right with color keys, with background panel
     fig = ax.figure
     trans = fig.transFigure
-    x0, y0 = 0.96, 0.96
-    dy = 0.045
+    x0, y0 = 0.965, 0.965
+    dy = 0.04
     items = [
         ("Buy FVG", (0.09, 0.78, 0.69, 0.8), None, "box"),
         ("Sell FVG", (0.94, 0.27, 0.27, 0.8), None, "box"),
@@ -183,7 +183,7 @@ def draw_right_legend(ax):
         ("BOS", "#f59e0b", "B", "label"),
     ]
     # Background panel
-    panel_w = 0.18
+    panel_w = 0.16
     panel_h = dy * (len(items) + 1.4)
     panel = patches.FancyBboxPatch((x0 - panel_w, y0 - panel_h), panel_w, panel_h,
                                    boxstyle="round,pad=0.5", transform=trans,
@@ -376,7 +376,7 @@ def render(payload: Payload):
         style=s,
         volume=False,
         returnfig=True,
-        figsize=(12, 6),
+        figsize=(16, 8),
         datetime_format="%m-%d %H:%M",
         tight_layout=True,
         update_width_config=dict(candle_linewidth=0.6, candle_width=0.6),
@@ -395,9 +395,9 @@ def render(payload: Payload):
         ax_main.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M WIB\n%d-%m", tz=tz_wib))
     except Exception:
         pass
-    # Add extra padding so watermark and title don’t clash
+    # Add extra padding: leave space at top and right/left for legends
     try:
-        fig.subplots_adjust(top=0.88, bottom=0.20)
+        fig.subplots_adjust(left=0.12, right=0.80, top=0.78, bottom=0.26)
     except Exception:
         pass
     # mpf.plot may return a single Axes or a list/tuple of Axes. Use the price Axes.
@@ -482,7 +482,7 @@ def render(payload: Payload):
         f"BOS/CHoCH: {bos_total}/{choch_cnt}",
         f"Entry Areas: {entry_cnt}",
     ]
-    draw_legend(ax_main, info_lines, loc="upper left")
+    draw_legend(ax_main, info_lines, loc="upper left", use_figure=True)
     draw_right_legend(ax_main)
     # Prefer exact events from overlays; fallback to computed markers
     if isinstance(payload.overlays, dict) and payload.overlays.get("events"):
