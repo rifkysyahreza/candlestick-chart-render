@@ -8,6 +8,7 @@ import mplfinance as mpf
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.lines import Line2D
+import matplotlib.dates as mdates
 
 app = FastAPI()
 
@@ -345,24 +346,70 @@ def render(payload: Payload):
         ax_main.set_facecolor("white")
     except Exception:
         pass
-    # Draw FVG zones: top 3 each side
+    # Draw FVG zones: prefer precise time spans from overlays.fvg_active (startTs)
     try:
-        px = float(df["Close"].iloc[-1])
-        buys = top_fvg_zones(payload.overlays or {}, "bullish", px, limit=3)
-        sells = top_fvg_zones(payload.overlays or {}, "bearish", px, limit=3)
-        import matplotlib.patches as patches
-        for idx, z in enumerate(buys, start=1):
-            ax_main.axhspan(z["low"], z["high"], xmin=0.0, xmax=1.0, facecolor=(0.09, 0.78, 0.69, 0.12), edgecolor=(0.09, 0.78, 0.69, 0.35), linestyle=":", linewidth=0.8, zorder=0.3)
-            ax_main.text(0.99, (z["low"] + z["high"]) / 2, f" {idx} ", color="#083344", fontsize=8, va="center", ha="right", transform=ax_main.get_yaxis_transform(), bbox=dict(boxstyle="round", fc="#99f6e4", ec="#0e7490", lw=0.6, alpha=0.9))
-        for idx, z in enumerate(sells, start=1):
-            ax_main.axhspan(z["low"], z["high"], xmin=0.0, xmax=1.0, facecolor=(0.94, 0.27, 0.27, 0.10), edgecolor=(0.94, 0.27, 0.27, 0.35), linestyle=":", linewidth=0.8, zorder=0.3)
-            ax_main.text(0.99, (z["low"] + z["high"]) / 2, f" {idx} ", color="#450a0a", fontsize=8, va="center", ha="right", transform=ax_main.get_yaxis_transform(), bbox=dict(boxstyle="round", fc="#fecaca", ec="#b91c1c", lw=0.6, alpha=0.9))
+        ov = payload.overlays or {}
+        fvg_active = ov.get("fvg_active", []) or []
+        def dt(ms):
+            t = pd.to_datetime(ms, unit="ms", utc=True)
+            return t.tz_convert("UTC").tz_localize(None)
+        x_last = df.index[-1]
+        rank = {"bullish": [], "bearish": []}
+        # Build precise rectangles using startTs when available
+        rects = []
+        for z in fvg_active:
+            low = float(z.get("low")); high = float(z.get("high"));
+            kind = z.get("type")
+            st = z.get("startTs")
+            x0 = dt(st) if st is not None else df.index[0]
+            x1 = x_last
+            rects.append((kind, x0, x1, low, high))
+        # fallback to top3 if none
+        if not rects:
+            px = float(df["Close"].iloc[-1])
+            buys = top_fvg_zones(ov, "bullish", px, limit=3)
+            sells = top_fvg_zones(ov, "bearish", px, limit=3)
+            for z in buys:
+                rects.append(("bullish", df.index[0], x_last, z["low"], z["high"]))
+            for z in sells:
+                rects.append(("bearish", df.index[0], x_last, z["low"], z["high"]))
+        # draw
+        for i, (kind, x0, x1, low, high) in enumerate(rects, start=1):
+            w = mdates.date2num(x1) - mdates.date2num(x0)
+            if w <= 0: w = 0.01
+            rect = patches.Rectangle((mdates.date2num(x0), low), w, high - low,
+                                     transform=ax_main.transData,
+                                     facecolor=(0.09, 0.78, 0.69, 0.12) if kind == "bullish" else (0.94, 0.27, 0.27, 0.10),
+                                     edgecolor=(0.09, 0.78, 0.69, 0.35) if kind == "bullish" else (0.94, 0.27, 0.27, 0.35),
+                                     linestyle=":", linewidth=0.8, zorder=0.25)
+            ax_main.add_patch(rect)
+            # label number near right edge of zone
+            ax_main.text(x1, (low + high) / 2, f" {i} ", color="#083344" if kind=="bullish" else "#450a0a", fontsize=8, va="center", ha="right",
+                         bbox=dict(boxstyle="round", fc="#99f6e4" if kind=="bullish" else "#fecaca", ec="#0e7490" if kind=="bullish" else "#b91c1c", lw=0.6, alpha=0.9))
     except Exception:
         pass
 
     # Signals and lines
     try:
         draw_overlays(ax_main, payload.overlays)
+    except Exception:
+        pass
+
+    # Entry areas from overlays.entry_areas (if provided) — draw precise rectangles
+    try:
+        areas = (payload.overlays or {}).get("entry_areas") or []
+        x_last = df.index[-1]
+        for a in areas:
+            start = a.get("startTs")
+            if start is None: continue
+            x0 = pd.to_datetime(start, unit="ms", utc=True).tz_convert("UTC").tz_localize(None)
+            low = float(a.get("low", 0)); high = float(a.get("high", 0))
+            w = mdates.date2num(x_last) - mdates.date2num(x0)
+            rect = patches.Rectangle((mdates.date2num(x0), low), w, high - low, transform=ax_main.transData,
+                                     facecolor=(0.15, 0.76, 0.70, 0.10) if a.get("side")=="LONG" else (0.95, 0.34, 0.34, 0.10),
+                                     edgecolor=(0.06, 0.40, 0.49, 0.6) if a.get("side")=="LONG" else (0.80, 0.12, 0.12, 0.6),
+                                     linestyle="--", linewidth=0.8, zorder=0.35)
+            ax_main.add_patch(rect)
     except Exception:
         pass
 
