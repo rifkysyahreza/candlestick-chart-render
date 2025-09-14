@@ -107,8 +107,8 @@ def draw_legend(ax, text_lines: list[str], loc: str = "upper left", use_figure: 
     if use_figure:
         # place inside figure margins; assumes left<=0.12, right<=0.82
         pos_map = {
-            "upper left": (0.1, 0.92),
-            "upper right": (0.1, 0.92),
+            "upper left": (0.10, 0.95),
+            "upper right": (0.10, 0.92),
             "lower left": (0.06, 0.06),
             "lower right": (0.94, 0.06),
         }
@@ -184,12 +184,12 @@ def draw_right_legend(ax):
     ]
     # Layout constants
     char_w = 0.006  # approx width per character in figure fraction
-    text_gap = 0.030  # gap between swatch and text
+    text_gap = 0.1  # gap between swatch and text
     swatch_w = 0.030
     swatch_h = 0.016
     max_label = max(len(lbl) for (lbl, *_ ) in items)
-    panel_w = swatch_w + text_gap + char_w * max(len(lbl) for lbl, *_ in items) + 0.02  # small outer padding
-    panel_h = dy * len(items) + 0.04
+    panel_w = 0.2  # small outer padding
+    panel_h = 0.1
     # Panel positioned to exactly fit around items
     panel_x0 = x0 - panel_w
     panel_y0 = y0 - panel_h
@@ -405,7 +405,7 @@ def render(payload: Payload):
         pass
     # Add extra padding: leave space at top and right/left for legends
     try:
-        fig.subplots_adjust(left=0.12, right=0.80, top=0.85, bottom=0.26)
+        fig.subplots_adjust(left=0.80, right=0.80, top=0.7, bottom=0.26)
     except Exception:
         pass
     # mpf.plot may return a single Axes or a list/tuple of Axes. Use the price Axes.
