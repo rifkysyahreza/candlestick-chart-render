@@ -54,26 +54,26 @@ def draw_overlays(ax, overlays):
     buy = nearest.get("buy") if isinstance(nearest, dict) else None
     sell = nearest.get("sell") if isinstance(nearest, dict) else None
     if buy:
-        ax.add_patch(
-            patches.Rectangle(
-                (0, buy.get("low", 0)),
-                width=ax.get_xlim()[1] - ax.get_xlim()[0],
-                height=buy.get("high", 0) - buy.get("low", 0),
-                facecolor=(0.1, 0.73, 0.5, 0.08),
-                edgecolor=(0.1, 0.73, 0.5, 0.25),
-                linewidth=1,
-            )
+        ax.axhspan(
+            buy.get("low", 0),
+            buy.get("high", 0),
+            xmin=0.0,
+            xmax=1.0,
+            facecolor=(0.1, 0.73, 0.5, 0.08),
+            edgecolor=(0.1, 0.73, 0.5, 0.25),
+            linewidth=1,
+            zorder=0.5,
         )
     if sell:
-        ax.add_patch(
-            patches.Rectangle(
-                (0, sell.get("low", 0)),
-                width=ax.get_xlim()[1] - ax.get_xlim()[0],
-                height=sell.get("high", 0) - sell.get("low", 0),
-                facecolor=(0.94, 0.27, 0.27, 0.08),
-                edgecolor=(0.94, 0.27, 0.27, 0.25),
-                linewidth=1,
-            )
+        ax.axhspan(
+            sell.get("low", 0),
+            sell.get("high", 0),
+            xmin=0.0,
+            xmax=1.0,
+            facecolor=(0.94, 0.27, 0.27, 0.08),
+            edgecolor=(0.94, 0.27, 0.27, 0.25),
+            linewidth=1,
+            zorder=0.5,
         )
 
     # Signals lines
@@ -115,6 +115,7 @@ def render(payload: Payload):
         }
     )
     df.set_index("Date", inplace=True)
+    df.sort_index(inplace=True)
 
     # Style
     mc = mpf.make_marketcolors(up="#10b981", down="#ef4444", inherit=True)
@@ -131,6 +132,11 @@ def render(payload: Payload):
         tight_layout=True,
         update_width_config=dict(candle_linewidth=0.6, candle_width=0.6),
     )
+    try:
+        fig.patch.set_facecolor("white")
+        ax.set_facecolor("white")
+    except Exception:
+        pass
     try:
         draw_overlays(ax, payload.overlays)
     except Exception:
