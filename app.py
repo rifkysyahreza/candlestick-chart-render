@@ -156,7 +156,7 @@ def top_fvg_zones(overlays, kind: str, px: float, limit: int = 3):
 
 
 def draw_right_legend(ax):
-    # Draw a compact legend block at top-right with color keys
+    # Draw a compact legend block at top-right with color keys, with background panel
     x0, y0 = 0.985, 0.985
     dy = 0.055
     items = [
@@ -167,6 +167,13 @@ def draw_right_legend(ax):
         ("CHoCH", "#14b8a6", "C", "label"),
         ("BOS", "#f59e0b", "B", "label"),
     ]
+    # Background panel
+    panel_w = 0.23
+    panel_h = dy * (len(items) + 1.4)
+    panel = patches.FancyBboxPatch((x0 - panel_w, y0 - panel_h), panel_w, panel_h,
+                                   boxstyle="round,pad=0.5", transform=ax.transAxes,
+                                   facecolor=(0, 0, 0, 0.65), edgecolor=(1, 1, 1, 0.18), linewidth=0.6)
+    ax.add_patch(panel)
     for i, (label, color, txt, kind) in enumerate(items):
         y = y0 - i * dy
         # background row
@@ -175,11 +182,11 @@ def draw_right_legend(ax):
             y,
             f"  {label}  ",
             transform=ax.transAxes,
-            fontsize=9.5,
+            fontsize=10,
             color="#e5e7eb",
             ha="right",
             va="top",
-            bbox=dict(boxstyle="round,pad=0.35", fc=(0, 0, 0, 0.55), ec=(1, 1, 1, 0.15), lw=0.5),
+            bbox=dict(boxstyle="round,pad=0.35", fc=(0, 0, 0, 0.0), ec=(1, 1, 1, 0.0), lw=0.0),
         )
         # sample patch
         if kind == "box":
@@ -294,6 +301,46 @@ def draw_events(ax, df, overlays):
         pass
 
 
+def draw_short_lines(ax, df, overlays, bars_ahead: int = 5):
+    """Draw short horizontal arrows from each BOS/CHoCH event forward a few candles.
+    Keeps the chart clean while highlighting the level that matters for a short span.
+    """
+    try:
+        events = (overlays or {}).get("events") or []
+        if not events:
+            return
+        # build datetime index list
+        idx = list(df.index)
+        # map ts->nearest index position
+        def dt(ms):
+            t = pd.to_datetime(ms, unit="ms", utc=True)
+            return t.tz_convert("UTC").tz_localize(None)
+        for ev in events:
+            kind = ev.get("kind")
+            if kind not in ("BOS", "CHoCH"):
+                continue
+            y = float(ev.get("price", 0))
+            x0 = dt(ev.get("ts"))
+            # find nearest candle index
+            try:
+                i0 = max(0, min(len(idx) - 1, int(pd.Index(idx).get_indexer([x0], method="nearest")[0])))
+            except Exception:
+                # fallback: approximate via searchsorted
+                i0 = int(pd.Series(idx).searchsorted(x0))
+                i0 = max(0, min(len(idx) - 1, i0))
+            i1 = min(len(idx) - 1, i0 + bars_ahead)
+            x1 = idx[i1]
+            color = "#f59e0b" if kind == "BOS" else "#14b8a6"
+            ax.annotate(
+                "",
+                xy=(x1, y),
+                xytext=(x0, y),
+                arrowprops=dict(arrowstyle="-|>", color=color, lw=2, shrinkA=0, shrinkB=0, capstyle="round"),
+            )
+    except Exception:
+        pass
+
+
 @app.post("/render", dependencies=[Depends(verify_api_key)])
 def render(payload: Payload):
     if not payload.data:
@@ -349,6 +396,11 @@ def render(payload: Payload):
         ax_main.set_xlabel("Time (WIB)", color="#cbd5e1")
         tz_wib = pd.Timestamp.utcnow().tz_localize("UTC").tz_convert("Asia/Jakarta").tz
         ax_main.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M WIB\n%d-%m", tz=tz_wib))
+    except Exception:
+        pass
+    # Add extra padding so watermark and title don’t clash
+    try:
+        fig.subplots_adjust(top=0.88, bottom=0.20)
     except Exception:
         pass
     # mpf.plot may return a single Axes or a list/tuple of Axes. Use the price Axes.
@@ -440,6 +492,8 @@ def render(payload: Payload):
         draw_events(ax_main, df, payload.overlays)
     else:
         draw_markers(ax_main, df)
+    # Add short horizontal arrows from each BOS/CHoCH forward a few bars
+    draw_short_lines(ax_main, df, payload.overlays)
 
     # Footer stats
     ov = payload.overlays or {}
@@ -447,20 +501,7 @@ def render(payload: Payload):
     footer = f"CHoCH: {choch_cnt} | BOS: {bos_total} | BSL: {bsl_count} | {ov.get('trend','')}"
     draw_watermark(ax_main, footer)
 
-    # Bottom-left legend with labels as requested
-    try:
-        legend_lines = [
-            "Buy FVG",
-            "Sell FVG",
-            "Entry Area",
-            "Touch",
-            "CHoCH",
-            "BOS",
-            "Swings: H15 L15",
-        ]
-        draw_legend(ax_main, legend_lines, loc="lower left")
-    except Exception:
-        pass
+    # Bottom-left legend removed for a cleaner look
 
     buf = io.BytesIO()
     try:
