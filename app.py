@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.lines import Line2D
 import matplotlib.dates as mdates
+import matplotlib.patheffects as pe
 
 app = FastAPI()
 
@@ -83,9 +84,9 @@ def draw_overlays(ax, overlays):
     short_sig = overlays.get("short_signal") if isinstance(overlays, dict) else None
 
     def hline(y, color, label=None):
-        ax.axhline(y=y, color=color, linewidth=1, linestyle="-")
+        ax.axhline(y=y, color=color, linewidth=1.2, linestyle="-")
         if label:
-            ax.text(ax.get_xlim()[0], y, f" {label}", color=color, va="bottom", fontsize=7)
+            ax.text(ax.get_xlim()[0], y, f" {label}", color=color, va="bottom", fontsize=8)
 
     if long_sig:
         hline(long_sig.get("entry"), "#10b981", "Entry")
@@ -114,7 +115,7 @@ def draw_legend(ax, text_lines: list[str], loc: str = "upper left"):
         transform=ax.transAxes,
         ha="left" if "left" in loc else "right",
         va="top" if "upper" in loc else "bottom",
-        fontsize=10,
+        fontsize=11,
         color="#e5e7eb",
         bbox=dict(boxstyle="round,pad=0.5", fc=(0, 0, 0, 0.6), ec=(1, 1, 1, 0.25), lw=0.6),
     )
@@ -128,7 +129,7 @@ def draw_watermark(ax, text: str):
         transform=ax.transAxes,
         ha="center",
         va="top",
-        fontsize=10,
+        fontsize=11,
         color="#e5e7eb",
         alpha=0.9,
         bbox=dict(boxstyle="round,pad=0.35", fc=(0, 0, 0, 0.35), ec=(1, 1, 1, 0.2), lw=0.6),
@@ -161,9 +162,10 @@ def draw_right_legend(ax):
     items = [
         ("Buy FVG", (0.09, 0.78, 0.69, 0.8), None, "box"),
         ("Sell FVG", (0.94, 0.27, 0.27, 0.8), None, "box"),
-        ("Entry", "#10b981", None, "line"),
-        ("CHoCH", "#f59e0b", "C", "label"),
-        ("BOS", "#38bdf8", "B", "label"),
+        ("Entry Area", "#10b981", None, "line"),
+        ("Touch", "#fde047", None, "tri"),
+        ("CHoCH", "#14b8a6", "C", "label"),
+        ("BOS", "#f59e0b", "B", "label"),
     ]
     for i, (label, color, txt, kind) in enumerate(items):
         y = y0 - i * dy
@@ -197,6 +199,8 @@ def draw_right_legend(ax):
                 va="center",
                 bbox=dict(boxstyle="round,pad=0.25", fc=color, ec=(1, 1, 1, 0.25), lw=0.5),
             )
+        elif kind == "tri":
+            ax.scatter([x0 - 0.17], [y - 0.02], transform=ax.transAxes, marker="v", color=color, s=28)
 
 
 def compute_markers(df):
@@ -253,13 +257,14 @@ def draw_markers(ax, df):
     for i, y, kind, direction in markers[:200]:  # cap to avoid clutter
         x = idx[i]
         if kind == "BOS":
-            ax.scatter([x], [y], s=18, marker="s", color="#38bdf8", zorder=3)
-            ax.text(x, y, " B ", color="#0c4a6e", fontsize=7.5, va="center", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#bae6fd", ec="#0284c7", lw=0.4, alpha=0.95))
+            ax.axhline(y, color="#f59e0b", linestyle="-", linewidth=1.0, alpha=0.9)
+            ax.text(x, y, " BOS ", color="#7c2d12", fontsize=8, va="bottom", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#fed7aa", ec="#f59e0b", lw=0.4, alpha=0.95))
         elif kind == "CHoCH":
-            ax.scatter([x], [y], s=18, marker="^" if direction == "up" else "v", color="#f59e0b", zorder=3)
-            ax.text(x, y, " C ", color="#78350f", fontsize=7.5, va="center", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#fde68a", ec="#d97706", lw=0.4, alpha=0.95))
+            ax.axhline(y, color="#14b8a6", linestyle="-", linewidth=1.0, alpha=0.9)
+            ax.text(x, y, " CH ", color="#064e3b", fontsize=8, va="bottom", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#99f6e4", ec="#14b8a6", lw=0.4, alpha=0.95))
         elif kind == "BSL":
-            ax.text(x, y, " BSL ", color="#312e81", fontsize=7, va="center", ha="center", bbox=dict(boxstyle="round,pad=0.2", fc="#ddd6fe", ec="#4f46e5", lw=0.4, alpha=0.95))
+            ax.axhline(y, color="#a78bfa", linestyle=(0, (3, 3)), linewidth=1.0, alpha=0.9)
+            ax.text(x, y, " BSL ", color="#312e81", fontsize=8, va="bottom", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#ddd6fe", ec="#4f46e5", lw=0.4, alpha=0.95))
 
 
 def draw_events(ax, df, overlays):
@@ -277,13 +282,14 @@ def draw_events(ax, df, overlays):
             direction = ev.get("dir")
             x = ts
             if kind == "BOS":
-                ax.scatter([x], [price], s=18, marker="s", color="#38bdf8", zorder=3)
-                ax.text(x, price, " B ", color="#0c4a6e", fontsize=7.5, va="center", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#bae6fd", ec="#0284c7", lw=0.4, alpha=0.95))
+                ax.axhline(price, color="#f59e0b", linestyle="-", linewidth=1.0, alpha=0.9)
+                ax.text(x, price, " BOS ", color="#7c2d12", fontsize=8, va="bottom", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#fed7aa", ec="#f59e0b", lw=0.4, alpha=0.95))
             elif kind == "CHoCH":
-                ax.scatter([x], [price], s=18, marker="^" if direction == "up" else "v", color="#f59e0b", zorder=3)
-                ax.text(x, price, " C ", color="#78350f", fontsize=7.5, va="center", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#fde68a", ec="#d97706", lw=0.4, alpha=0.95))
+                ax.axhline(price, color="#14b8a6", linestyle="-", linewidth=1.0, alpha=0.9)
+                ax.text(x, price, " CH ", color="#064e3b", fontsize=8, va="bottom", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#99f6e4", ec="#14b8a6", lw=0.4, alpha=0.95))
             elif kind == "BSL":
-                ax.text(x, price, " BSL ", color="#312e81", fontsize=7, va="center", ha="center", bbox=dict(boxstyle="round,pad=0.2", fc="#ddd6fe", ec="#4f46e5", lw=0.4, alpha=0.95))
+                ax.axhline(price, color="#a78bfa", linestyle=(0, (3, 3)), linewidth=1.0, alpha=0.9)
+                ax.text(x, price, " BSL ", color="#312e81", fontsize=8, va="bottom", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#ddd6fe", ec="#4f46e5", lw=0.4, alpha=0.95))
     except Exception:
         pass
 
@@ -334,6 +340,15 @@ def render(payload: Payload):
     # top-center title
     try:
         fig.suptitle(f"{payload.symbol} {payload.tf} — Systematic Smart Money by Nca", color="#e5e7eb", fontsize=14, fontweight="bold")
+    except Exception:
+        pass
+
+    # Axis labels
+    try:
+        ax_main.set_ylabel("Price (USD)", color="#cbd5e1")
+        ax_main.set_xlabel("Time (WIB)", color="#cbd5e1")
+        tz_wib = pd.Timestamp.utcnow().tz_localize("UTC").tz_convert("Asia/Jakarta").tz
+        ax_main.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M WIB\n%d-%m", tz=tz_wib))
     except Exception:
         pass
     # mpf.plot may return a single Axes or a list/tuple of Axes. Use the price Axes.
@@ -395,21 +410,44 @@ def render(payload: Payload):
     except Exception:
         pass
 
-    # Entry areas from overlays.entry_areas (if provided) — draw precise rectangles
+    # Entry areas from overlays.entry_areas (if provided) — draw precise rectangles with star markers ①②③
     try:
         areas = (payload.overlays or {}).get("entry_areas") or []
         x_last = df.index[-1]
-        for a in areas:
+        circled = ['\u2460', '\u2461', '\u2462']
+        for idx, a in enumerate(areas[:3]):
             start = a.get("startTs")
             if start is None: continue
             x0 = pd.to_datetime(start, unit="ms", utc=True).tz_convert("UTC").tz_localize(None)
             low = float(a.get("low", 0)); high = float(a.get("high", 0))
             w = mdates.date2num(x_last) - mdates.date2num(x0)
             rect = patches.Rectangle((mdates.date2num(x0), low), w, high - low, transform=ax_main.transData,
-                                     facecolor=(0.15, 0.76, 0.70, 0.10) if a.get("side")=="LONG" else (0.95, 0.34, 0.34, 0.10),
-                                     edgecolor=(0.06, 0.40, 0.49, 0.6) if a.get("side")=="LONG" else (0.80, 0.12, 0.12, 0.6),
-                                     linestyle="--", linewidth=0.8, zorder=0.35)
+                                     facecolor=(0.1, 0.78, 0.69, 0.12), edgecolor=(0.0, 0.6, 0.6, 0.8),
+                                     linestyle="--", linewidth=1.0, zorder=0.35)
+            rect.set_path_effects([pe.withStroke(linewidth=6, foreground=(0.0, 0.8, 0.8, 0.15))])
             ax_main.add_patch(rect)
+            # star marker and circled number inside zone
+            xm = mdates.num2date((mdates.date2num(x0) + mdates.date2num(x_last)) / 2)
+            ym = (low + high) / 2
+            ax_main.scatter([xm], [ym], marker='*', s=70, color="#fde047", zorder=3)
+            ax_main.text(xm, ym, f" {circled[idx]} ", color="#022c22", fontsize=10, va="center", ha="left",
+                         bbox=dict(boxstyle="round,pad=0.2", fc="#a7f3d0", ec="#14b8a6", lw=0.6, alpha=0.95))
+    except Exception:
+        pass
+
+    # Liquidity touches (small triangles) where candles intersect buy FVGs
+    try:
+        # Build a combined list of buy zones from fvg_active
+        ov = payload.overlays or {}
+        zones = [z for z in (ov.get('fvg_active') or []) if z.get('type') == 'bullish']
+        for z in zones[:5]:
+            low, high = float(z.get('low', 0)), float(z.get('high', 0))
+            # find candles that touch the zone
+            mask = (df['Low'] <= high) & (df['High'] >= low)
+            idxs = df.index[mask]
+            for x in idxs[-10:]:  # draw recent touches only
+                price = max(min(df.loc[x, 'Close'], high), low)
+                ax_main.scatter([x], [price], marker='v', s=28, color="#fde047", zorder=3)
     except Exception:
         pass
 
@@ -420,11 +458,17 @@ def render(payload: Payload):
     pct = (chg / prev_close * 100) if prev_close else 0.0
     from datetime import datetime, timezone, timedelta
     wib = datetime.now(timezone.utc) + timedelta(hours=7)
+    ov = payload.overlays or {}
+    bos_total = (ov.get('bos_bull', 0) or 0) + (ov.get('bos_bear', 0) or 0)
+    choch_cnt = ov.get('choch_count', 0) or 0
+    entry_cnt = len(ov.get('entry_areas') or [])
     info_lines = [
         f"{payload.symbol} {payload.tf}",
         f"$ {last_close:.4f}",
         f"{chg:+.4f} ({pct:+.2f}%)",
         f"Time: {wib.strftime('%H:%M')} WIB",
+        f"BOS/CHoCH: {bos_total}/{choch_cnt}",
+        f"Entry Areas: {entry_cnt}",
     ]
     draw_legend(ax_main, info_lines, loc="upper left")
     draw_right_legend(ax_main)
@@ -436,8 +480,24 @@ def render(payload: Payload):
 
     # Footer stats
     ov = payload.overlays or {}
-    footer = f"CHoCH: {ov.get('choch_count', 0)} | BOS: {ov.get('bos_bull',0)+ov.get('bos_bear',0)} | {ov.get('trend','')}"
+    bsl_count = sum(1 for e in (ov.get('events') or []) if e.get('kind') == 'BSL')
+    footer = f"CHoCH: {choch_cnt} | BOS: {bos_total} | BSL: {bsl_count} | {ov.get('trend','')}"
     draw_watermark(ax_main, footer)
+
+    # Bottom-left legend with labels as requested
+    try:
+        legend_lines = [
+            "Buy FVG",
+            "Sell FVG",
+            "Entry Area",
+            "Touch",
+            "CHoCH",
+            "BOS",
+            "Swings: H15 L15",
+        ]
+        draw_legend(ax_main, legend_lines, loc="lower left")
+    except Exception:
+        pass
 
     buf = io.BytesIO()
     try:
