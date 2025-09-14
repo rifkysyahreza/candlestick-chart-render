@@ -301,41 +301,41 @@ def draw_events(ax, df, overlays):
         pass
 
 
-def draw_short_lines(ax, df, overlays, bars_ahead: int = 5):
-    """Draw short horizontal arrows from each BOS/CHoCH event forward a few candles.
-    Keeps the chart clean while highlighting the level that matters for a short span.
+def draw_short_lines(ax, df, overlays):
+    """Draw horizontal arrows per BOS/CHoCH, dynamically extending to the next event.
+    If there is no later event, extend to the last candle.
     """
     try:
         events = (overlays or {}).get("events") or []
         if not events:
             return
-        # build datetime index list
-        idx = list(df.index)
-        # map ts->nearest index position
+        # sort by time
+        events = sorted(events, key=lambda e: e.get("ts", 0))
         def dt(ms):
             t = pd.to_datetime(ms, unit="ms", utc=True)
             return t.tz_convert("UTC").tz_localize(None)
-        for ev in events:
+        last_x = df.index[-1]
+        prev_y = None
+        for i, ev in enumerate(events):
             kind = ev.get("kind")
             if kind not in ("BOS", "CHoCH"):
                 continue
             y = float(ev.get("price", 0))
+            # de-duplicate if same level repeats
+            if prev_y is not None and abs(prev_y - y) < 1e-9:
+                continue
+            prev_y = y
             x0 = dt(ev.get("ts"))
-            # find nearest candle index
-            try:
-                i0 = max(0, min(len(idx) - 1, int(pd.Index(idx).get_indexer([x0], method="nearest")[0])))
-            except Exception:
-                # fallback: approximate via searchsorted
-                i0 = int(pd.Series(idx).searchsorted(x0))
-                i0 = max(0, min(len(idx) - 1, i0))
-            i1 = min(len(idx) - 1, i0 + bars_ahead)
-            x1 = idx[i1]
+            x1 = dt(events[i + 1]["ts"]) if i + 1 < len(events) else last_x
+            # guard for ordering
+            if x1 <= x0:
+                x1 = last_x
             color = "#f59e0b" if kind == "BOS" else "#14b8a6"
             ax.annotate(
                 "",
                 xy=(x1, y),
                 xytext=(x0, y),
-                arrowprops=dict(arrowstyle="-|>", color=color, lw=2, shrinkA=0, shrinkB=0, capstyle="round"),
+                arrowprops=dict(arrowstyle="-|>", color=color, lw=2.2, shrinkA=0, shrinkB=0, capstyle="round"),
             )
     except Exception:
         pass
