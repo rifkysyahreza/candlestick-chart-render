@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 import mplfinance as mpf
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.lines import Line2D
 
 app = FastAPI()
 
@@ -48,7 +50,6 @@ def healthz():
 def draw_overlays(ax, overlays):
     if not overlays:
         return
-    import matplotlib.patches as patches
     # FVG nearest zones
     nearest = overlays.get("nearest", {}) if isinstance(overlays, dict) else {}
     buy = nearest.get("buy") if isinstance(nearest, dict) else None
@@ -112,9 +113,9 @@ def draw_legend(ax, text_lines: list[str], loc: str = "upper left"):
         transform=ax.transAxes,
         ha="left" if "left" in loc else "right",
         va="top" if "upper" in loc else "bottom",
-        fontsize=8,
+        fontsize=10,
         color="#e5e7eb",
-        bbox=dict(boxstyle="round,pad=0.4", fc=(0, 0, 0, 0.55), ec=(1, 1, 1, 0.2), lw=0.5),
+        bbox=dict(boxstyle="round,pad=0.5", fc=(0, 0, 0, 0.6), ec=(1, 1, 1, 0.25), lw=0.6),
     )
 
 
@@ -126,10 +127,10 @@ def draw_watermark(ax, text: str):
         transform=ax.transAxes,
         ha="center",
         va="top",
-        fontsize=9,
-        color="#cbd5e1",
-        alpha=0.85,
-        bbox=dict(boxstyle="round,pad=0.3", fc=(0, 0, 0, 0.25), ec=(1, 1, 1, 0.15), lw=0.5),
+        fontsize=10,
+        color="#e5e7eb",
+        alpha=0.9,
+        bbox=dict(boxstyle="round,pad=0.35", fc=(0, 0, 0, 0.35), ec=(1, 1, 1, 0.2), lw=0.6),
     )
 
 
@@ -152,6 +153,140 @@ def top_fvg_zones(overlays, kind: str, px: float, limit: int = 3):
     return (preferred + rest)[:limit]
 
 
+def draw_right_legend(ax):
+    # Draw a compact legend block at top-right with color keys
+    x0, y0 = 0.985, 0.985
+    dy = 0.055
+    items = [
+        ("Buy FVG", (0.09, 0.78, 0.69, 0.8), None, "box"),
+        ("Sell FVG", (0.94, 0.27, 0.27, 0.8), None, "box"),
+        ("Entry", "#10b981", None, "line"),
+        ("CHoCH", "#f59e0b", "C", "label"),
+        ("BOS", "#38bdf8", "B", "label"),
+    ]
+    for i, (label, color, txt, kind) in enumerate(items):
+        y = y0 - i * dy
+        # background row
+        ax.text(
+            x0 - 0.005,
+            y,
+            f"  {label}  ",
+            transform=ax.transAxes,
+            fontsize=9.5,
+            color="#e5e7eb",
+            ha="right",
+            va="top",
+            bbox=dict(boxstyle="round,pad=0.35", fc=(0, 0, 0, 0.55), ec=(1, 1, 1, 0.15), lw=0.5),
+        )
+        # sample patch
+        if kind == "box":
+            rect = patches.Rectangle((x0 - 0.19, y - 0.032), 0.04, 0.02, transform=ax.transAxes, fc=color, ec=color, lw=1)
+            ax.add_patch(rect)
+        elif kind == "line":
+            ax.add_line(Line2D([x0 - 0.19, x0 - 0.15], [y - 0.022, y - 0.022], transform=ax.transAxes, color=color, lw=2))
+        elif kind == "label":
+            ax.text(
+                x0 - 0.17,
+                y - 0.02,
+                txt or "",
+                transform=ax.transAxes,
+                fontsize=9,
+                color="#0f172a",
+                ha="center",
+                va="center",
+                bbox=dict(boxstyle="round,pad=0.25", fc=color, ec=(1, 1, 1, 0.25), lw=0.5),
+            )
+
+
+def compute_markers(df):
+    # Lightweight swings + BOS/CHoCH markers
+    o = df["Open"].values
+    h = df["High"].values
+    l = df["Low"].values
+    c = df["Close"].values
+    n = len(df)
+    LEFT = RIGHT = 2
+    swings_high = []
+    swings_low = []
+    for i in range(LEFT, n - RIGHT):
+        is_h = all(h[i] > h[i - k] for k in range(1, LEFT + 1)) and all(h[i] >= h[i + k] for k in range(1, RIGHT + 1))
+        is_l = all(l[i] < l[i - k] for k in range(1, LEFT + 1)) and all(l[i] <= l[i + k] for k in range(1, RIGHT + 1))
+        if is_h:
+            swings_high.append(i)
+        if is_l:
+            swings_low.append(i)
+    markers = []
+    regime = None
+    last_h = max(swings_high) if swings_high else None
+    last_l = max(swings_low) if swings_low else None
+    for i in range(n):
+        if last_h is not None and c[i] > h[last_h]:
+            markers.append((i, c[i], "BOS", "up"))
+            if regime == "down":
+                markers.append((i, c[i], "CHoCH", "up"))
+            regime = "up"
+            # BSL near the broken low if available
+            if last_l is not None:
+                markers.append((i, l[last_l], "BSL", "low"))
+            # update last_h to next swing after i
+            last_h = next((idx for idx in swings_high if idx > i), last_h)
+        if last_l is not None and c[i] < l[last_l]:
+            markers.append((i, c[i], "BOS", "down"))
+            if regime == "up":
+                markers.append((i, c[i], "CHoCH", "down"))
+            regime = "down"
+            if last_h is not None:
+                markers.append((i, h[last_h], "BSL", "high"))
+            last_l = next((idx for idx in swings_low if idx > i), last_l)
+        # roll swing references forward
+        if last_h is None or (swings_high and i >= swings_high[-1]):
+            last_h = next((idx for idx in swings_high if idx > i), last_h)
+        if last_l is None or (swings_low and i >= swings_low[-1]):
+            last_l = next((idx for idx in swings_low if idx > i), last_l)
+    return markers
+
+
+def draw_markers(ax, df):
+    markers = compute_markers(df)
+    idx = df.index.to_numpy()
+    for i, y, kind, direction in markers[:200]:  # cap to avoid clutter
+        x = idx[i]
+        if kind == "BOS":
+            ax.scatter([x], [y], s=18, marker="s", color="#38bdf8", zorder=3)
+            ax.text(x, y, " B ", color="#0c4a6e", fontsize=7.5, va="center", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#bae6fd", ec="#0284c7", lw=0.4, alpha=0.95))
+        elif kind == "CHoCH":
+            ax.scatter([x], [y], s=18, marker="^" if direction == "up" else "v", color="#f59e0b", zorder=3)
+            ax.text(x, y, " C ", color="#78350f", fontsize=7.5, va="center", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#fde68a", ec="#d97706", lw=0.4, alpha=0.95))
+        elif kind == "BSL":
+            ax.text(x, y, " BSL ", color="#312e81", fontsize=7, va="center", ha="center", bbox=dict(boxstyle="round,pad=0.2", fc="#ddd6fe", ec="#4f46e5", lw=0.4, alpha=0.95))
+
+
+def draw_events(ax, df, overlays):
+    try:
+        events = (overlays or {}).get("events")
+        if not events:
+            return
+        # map ts to index datetime
+        for ev in events[:300]:
+            ts = pd.to_datetime(ev.get("ts", None), unit="ms", utc=True)
+            if ts.tzinfo is not None:
+                ts = ts.tz_convert("UTC").tz_localize(None)
+            price = float(ev.get("price", 0))
+            kind = ev.get("kind")
+            direction = ev.get("dir")
+            x = ts
+            if kind == "BOS":
+                ax.scatter([x], [price], s=18, marker="s", color="#38bdf8", zorder=3)
+                ax.text(x, price, " B ", color="#0c4a6e", fontsize=7.5, va="center", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#bae6fd", ec="#0284c7", lw=0.4, alpha=0.95))
+            elif kind == "CHoCH":
+                ax.scatter([x], [price], s=18, marker="^" if direction == "up" else "v", color="#f59e0b", zorder=3)
+                ax.text(x, price, " C ", color="#78350f", fontsize=7.5, va="center", ha="left", bbox=dict(boxstyle="round,pad=0.2", fc="#fde68a", ec="#d97706", lw=0.4, alpha=0.95))
+            elif kind == "BSL":
+                ax.text(x, price, " BSL ", color="#312e81", fontsize=7, va="center", ha="center", bbox=dict(boxstyle="round,pad=0.2", fc="#ddd6fe", ec="#4f46e5", lw=0.4, alpha=0.95))
+    except Exception:
+        pass
+
+
 @app.post("/render", dependencies=[Depends(verify_api_key)])
 def render(payload: Payload):
     if not payload.data:
@@ -162,7 +297,7 @@ def render(payload: Payload):
     # Build dataframe for mplfinance
     df = pd.DataFrame(
         {
-            "Date": pd.to_datetime([c.ts for c in payload.data], unit="ms"),
+            "Date": pd.to_datetime([c.ts for c in payload.data], unit="ms", utc=True).tz_convert("UTC").tz_localize(None),
             "Open": [c.open for c in payload.data],
             "High": [c.high for c in payload.data],
             "Low": [c.low for c in payload.data],
@@ -195,6 +330,11 @@ def render(payload: Payload):
         tight_layout=True,
         update_width_config=dict(candle_linewidth=0.6, candle_width=0.6),
     )
+    # top-center title
+    try:
+        fig.suptitle(f"{payload.symbol} {payload.tf} — Systematic Smart Money by Nca", color="#e5e7eb", fontsize=14, fontweight="bold")
+    except Exception:
+        pass
     # mpf.plot may return a single Axes or a list/tuple of Axes. Use the price Axes.
     try:
         ax_main = ax[0] if isinstance(ax, (list, tuple, np.ndarray)) else ax
@@ -240,6 +380,12 @@ def render(payload: Payload):
         f"Time: {wib.strftime('%H:%M')} WIB",
     ]
     draw_legend(ax_main, info_lines, loc="upper left")
+    draw_right_legend(ax_main)
+    # Prefer exact events from overlays; fallback to computed markers
+    if isinstance(payload.overlays, dict) and payload.overlays.get("events"):
+        draw_events(ax_main, df, payload.overlays)
+    else:
+        draw_markers(ax_main, df)
 
     # Footer stats
     ov = payload.overlays or {}
