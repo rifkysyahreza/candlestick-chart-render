@@ -361,46 +361,21 @@ def render(payload: Payload):
         ax_main.set_facecolor("white")
     except Exception:
         pass
-    # Draw FVG zones: prefer precise time spans from overlays.fvg_active (startTs)
+    # Clean FVG representation: only nearest BUY/SELL as dashed midlines with labels
     try:
         ov = payload.overlays or {}
-        fvg_active = ov.get("fvg_active", []) or []
-        def dt(ms):
-            t = pd.to_datetime(ms, unit="ms", utc=True)
-            return t.tz_convert("UTC").tz_localize(None)
-        x_last = df.index[-1]
-        rank = {"bullish": [], "bearish": []}
-        # Build precise rectangles using startTs when available
-        rects = []
-        for z in fvg_active:
-            low = float(z.get("low")); high = float(z.get("high"));
-            kind = z.get("type")
-            st = z.get("startTs")
-            x0 = dt(st) if st is not None else df.index[0]
-            x1 = x_last
-            rects.append((kind, x0, x1, low, high))
-        # fallback to top3 if none
-        if not rects:
-            px = float(df["Close"].iloc[-1])
-            buys = top_fvg_zones(ov, "bullish", px, limit=3)
-            sells = top_fvg_zones(ov, "bearish", px, limit=3)
-            for z in buys:
-                rects.append(("bullish", df.index[0], x_last, z["low"], z["high"]))
-            for z in sells:
-                rects.append(("bearish", df.index[0], x_last, z["low"], z["high"]))
-        # draw
-        for i, (kind, x0, x1, low, high) in enumerate(rects, start=1):
-            w = mdates.date2num(x1) - mdates.date2num(x0)
-            if w <= 0: w = 0.01
-            rect = patches.Rectangle((mdates.date2num(x0), low), w, high - low,
-                                     transform=ax_main.transData,
-                                     facecolor=(0.09, 0.78, 0.69, 0.12) if kind == "bullish" else (0.94, 0.27, 0.27, 0.10),
-                                     edgecolor=(0.09, 0.78, 0.69, 0.35) if kind == "bullish" else (0.94, 0.27, 0.27, 0.35),
-                                     linestyle=":", linewidth=0.8, zorder=0.25)
-            ax_main.add_patch(rect)
-            # label number near right edge of zone
-            ax_main.text(x1, (low + high) / 2, f" {i} ", color="#083344" if kind=="bullish" else "#450a0a", fontsize=8, va="center", ha="right",
-                         bbox=dict(boxstyle="round", fc="#99f6e4" if kind=="bullish" else "#fecaca", ec="#0e7490" if kind=="bullish" else "#b91c1c", lw=0.6, alpha=0.9))
+        nb = ((ov.get("nearest") or {}).get("buy"))
+        ns = ((ov.get("nearest") or {}).get("sell"))
+        if nb:
+            y = (float(nb.get("low", 0)) + float(nb.get("high", 0))) / 2.0
+            ax_main.axhline(y, color="#22d3ee", linestyle=(0, (6, 3)), linewidth=1.2, alpha=0.9)
+            ax_main.text(ax_main.get_xlim()[1], y, " BUY FVG ", color="#022c22", fontsize=9, va="bottom", ha="right",
+                         bbox=dict(boxstyle="round,pad=0.2", fc="#99f6e4", ec="#0e7490", lw=0.6, alpha=0.95))
+        if ns:
+            y = (float(ns.get("low", 0)) + float(ns.get("high", 0))) / 2.0
+            ax_main.axhline(y, color="#ef4444", linestyle=(0, (6, 3)), linewidth=1.2, alpha=0.9)
+            ax_main.text(ax_main.get_xlim()[1], y, " SELL FVG ", color="#450a0a", fontsize=9, va="top", ha="right",
+                         bbox=dict(boxstyle="round,pad=0.2", fc="#fecaca", ec="#b91c1c", lw=0.6, alpha=0.95))
     except Exception:
         pass
 
@@ -410,46 +385,34 @@ def render(payload: Payload):
     except Exception:
         pass
 
-    # Entry areas from overlays.entry_areas (if provided) — draw precise rectangles with star markers ①②③
+    # Minimal entry/SL/TP lines from signals
     try:
-        areas = (payload.overlays or {}).get("entry_areas") or []
-        x_last = df.index[-1]
-        circled = ['\u2460', '\u2461', '\u2462']
-        for idx, a in enumerate(areas[:3]):
-            start = a.get("startTs")
-            if start is None: continue
-            x0 = pd.to_datetime(start, unit="ms", utc=True).tz_convert("UTC").tz_localize(None)
-            low = float(a.get("low", 0)); high = float(a.get("high", 0))
-            w = mdates.date2num(x_last) - mdates.date2num(x0)
-            rect = patches.Rectangle((mdates.date2num(x0), low), w, high - low, transform=ax_main.transData,
-                                     facecolor=(0.1, 0.78, 0.69, 0.12), edgecolor=(0.0, 0.6, 0.6, 0.8),
-                                     linestyle="--", linewidth=1.0, zorder=0.35)
-            rect.set_path_effects([pe.withStroke(linewidth=6, foreground=(0.0, 0.8, 0.8, 0.15))])
-            ax_main.add_patch(rect)
-            # star marker and circled number inside zone
-            xm = mdates.num2date((mdates.date2num(x0) + mdates.date2num(x_last)) / 2)
-            ym = (low + high) / 2
-            ax_main.scatter([xm], [ym], marker='*', s=70, color="#fde047", zorder=3)
-            ax_main.text(xm, ym, f" {circled[idx]} ", color="#022c22", fontsize=10, va="center", ha="left",
-                         bbox=dict(boxstyle="round,pad=0.2", fc="#a7f3d0", ec="#14b8a6", lw=0.6, alpha=0.95))
+        sigL = (payload.overlays or {}).get("long_signal")
+        sigS = (payload.overlays or {}).get("short_signal")
+        def label_line(y, text, color, va="bottom"):
+            ax_main.axhline(y, color=color, linewidth=1.2)
+            ax_main.text(ax_main.get_xlim()[0], y, f" {text} ", color="#0f172a", fontsize=9, va=va, ha="left",
+                         bbox=dict(boxstyle="round,pad=0.2", fc=color, ec=color, lw=0.4, alpha=0.9))
+        if sigL:
+            label_line(float(sigL.get("entry")), "Entry", "#10b981")
+            ax_main.axhline(float(sigL.get("sl")), color="#ef4444", linestyle=(0,(6,3)), linewidth=1.1)
+            ax_main.text(ax_main.get_xlim()[0], float(sigL.get("sl")), " SL ", color="#7f1d1d", va="top", ha="left",
+                         fontsize=9, bbox=dict(boxstyle="round,pad=0.2", fc="#fecaca", ec="#ef4444", lw=0.4, alpha=0.9))
+            ax_main.axhline(float(sigL.get("tp1")), color="#22c55e", linestyle=(0,(2,2)), linewidth=1.0, alpha=0.9)
+            ax_main.text(ax_main.get_xlim()[0], float(sigL.get("tp1")), " TP1 ", color="#064e3b", va="bottom", ha="left",
+                         fontsize=9, bbox=dict(boxstyle="round,pad=0.2", fc="#bbf7d0", ec="#22c55e", lw=0.4, alpha=0.9))
+        if sigS:
+            label_line(float(sigS.get("entry")), "Entry", "#ef4444")
+            ax_main.axhline(float(sigS.get("sl")), color="#10b981", linestyle=(0,(6,3)), linewidth=1.1)
+            ax_main.text(ax_main.get_xlim()[0], float(sigS.get("sl")), " SL ", color="#064e3b", va="top", ha="left",
+                         fontsize=9, bbox=dict(boxstyle="round,pad=0.2", fc="#a7f3d0", ec="#10b981", lw=0.4, alpha=0.9))
+            ax_main.axhline(float(sigS.get("tp1")), color="#f59e0b", linestyle=(0,(2,2)), linewidth=1.0, alpha=0.9)
+            ax_main.text(ax_main.get_xlim()[0], float(sigS.get("tp1")), " TP1 ", color="#7c2d12", va="bottom", ha="left",
+                         fontsize=9, bbox=dict(boxstyle="round,pad=0.2", fc="#fde68a", ec="#f59e0b", lw=0.4, alpha=0.9))
     except Exception:
         pass
 
-    # Liquidity touches (small triangles) where candles intersect buy FVGs
-    try:
-        # Build a combined list of buy zones from fvg_active
-        ov = payload.overlays or {}
-        zones = [z for z in (ov.get('fvg_active') or []) if z.get('type') == 'bullish']
-        for z in zones[:5]:
-            low, high = float(z.get('low', 0)), float(z.get('high', 0))
-            # find candles that touch the zone
-            mask = (df['Low'] <= high) & (df['High'] >= low)
-            idxs = df.index[mask]
-            for x in idxs[-10:]:  # draw recent touches only
-                price = max(min(df.loc[x, 'Close'], high), low)
-                ax_main.scatter([x], [price], marker='v', s=28, color="#fde047", zorder=3)
-    except Exception:
-        pass
+    # Keep chart clean: skip additional touch markers
 
     # Legends and watermark
     last_close = float(df["Close"].iloc[-1])
