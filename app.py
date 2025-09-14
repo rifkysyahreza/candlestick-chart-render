@@ -100,19 +100,32 @@ def draw_overlays(ax, overlays):
         hline(short_sig.get("tp2"), "#ea580c", "TP2")
 
 
-def draw_legend(ax, text_lines: list[str], loc: str = "upper left"):
-    x, y = {
-        "upper left": (0.02, 0.98),
-        "upper right": (0.98, 0.98),
-        "lower left": (0.02, 0.02),
-        "lower right": (0.98, 0.02),
-    }.get(loc, (0.02, 0.98))
+def draw_legend(ax, text_lines: list[str], loc: str = "upper left", use_figure: bool = False):
+    # Choose coordinate system
+    trans = ax.figure.transFigure if use_figure else ax.transAxes
+    # Default anchors
+    if use_figure:
+        # place inside figure margins; assumes left<=0.12, right<=0.82
+        pos_map = {
+            "upper left": (0.06, 0.97),
+            "upper right": (0.94, 0.97),
+            "lower left": (0.06, 0.06),
+            "lower right": (0.94, 0.06),
+        }
+    else:
+        pos_map = {
+            "upper left": (0.02, 0.98),
+            "upper right": (0.98, 0.98),
+            "lower left": (0.02, 0.02),
+            "lower right": (0.98, 0.02),
+        }
+    x, y = pos_map.get(loc, (0.02, 0.98))
     txt = "\n".join(text_lines)
     ax.text(
         x,
         y,
         txt,
-        transform=ax.transAxes,
+        transform=trans,
         ha="left" if "left" in loc else "right",
         va="top" if "upper" in loc else "bottom",
         fontsize=11,
@@ -157,8 +170,10 @@ def top_fvg_zones(overlays, kind: str, px: float, limit: int = 3):
 
 def draw_right_legend(ax):
     # Draw a compact legend block at top-right with color keys, with background panel
-    x0, y0 = 0.985, 0.985
-    dy = 0.055
+    fig = ax.figure
+    trans = fig.transFigure
+    x0, y0 = 0.96, 0.96
+    dy = 0.045
     items = [
         ("Buy FVG", (0.09, 0.78, 0.69, 0.8), None, "box"),
         ("Sell FVG", (0.94, 0.27, 0.27, 0.8), None, "box"),
@@ -168,46 +183,28 @@ def draw_right_legend(ax):
         ("BOS", "#f59e0b", "B", "label"),
     ]
     # Background panel
-    panel_w = 0.23
+    panel_w = 0.18
     panel_h = dy * (len(items) + 1.4)
     panel = patches.FancyBboxPatch((x0 - panel_w, y0 - panel_h), panel_w, panel_h,
-                                   boxstyle="round,pad=0.5", transform=ax.transAxes,
+                                   boxstyle="round,pad=0.5", transform=trans,
                                    facecolor=(0, 0, 0, 0.65), edgecolor=(1, 1, 1, 0.18), linewidth=0.6)
-    ax.add_patch(panel)
+    ax.add_artist(panel)
+    x_sample = x0 - panel_w + 0.02
+    x_text = x0 - 0.01
     for i, (label, color, txt, kind) in enumerate(items):
         y = y0 - i * dy
-        # background row
-        ax.text(
-            x0 - 0.005,
-            y,
-            f"  {label}  ",
-            transform=ax.transAxes,
-            fontsize=10,
-            color="#e5e7eb",
-            ha="right",
-            va="top",
-            bbox=dict(boxstyle="round,pad=0.35", fc=(0, 0, 0, 0.0), ec=(1, 1, 1, 0.0), lw=0.0),
-        )
+        ax.text(x_text, y, label, transform=trans, fontsize=9, color="#e5e7eb", ha="right", va="top")
         # sample patch
         if kind == "box":
-            rect = patches.Rectangle((x0 - 0.19, y - 0.032), 0.04, 0.02, transform=ax.transAxes, fc=color, ec=color, lw=1)
-            ax.add_patch(rect)
+            rect = patches.Rectangle((x_sample, y - 0.028), 0.03, 0.018, transform=trans, fc=color, ec=color, lw=1)
+            ax.add_artist(rect)
         elif kind == "line":
-            ax.add_line(Line2D([x0 - 0.19, x0 - 0.15], [y - 0.022, y - 0.022], transform=ax.transAxes, color=color, lw=2))
+            ax.add_line(Line2D([x_sample, x_sample + 0.03], [y - 0.020, y - 0.020], transform=trans, color=color, lw=2))
         elif kind == "label":
-            ax.text(
-                x0 - 0.17,
-                y - 0.02,
-                txt or "",
-                transform=ax.transAxes,
-                fontsize=9,
-                color="#0f172a",
-                ha="center",
-                va="center",
-                bbox=dict(boxstyle="round,pad=0.25", fc=color, ec=(1, 1, 1, 0.25), lw=0.5),
-            )
+            ax.text(x_sample + 0.015, y - 0.02, txt or "", transform=trans, fontsize=8.5, color="#0f172a",
+                    ha="center", va="center", bbox=dict(boxstyle="round,pad=0.2", fc=color, ec=(1,1,1,0.25), lw=0.5))
         elif kind == "tri":
-            ax.scatter([x0 - 0.17], [y - 0.02], transform=ax.transAxes, marker="v", color=color, s=28)
+            ax.scatter([x_sample + 0.015], [y - 0.02], transform=trans, marker="v", color=color, s=24)
 
 
 def compute_markers(df):
